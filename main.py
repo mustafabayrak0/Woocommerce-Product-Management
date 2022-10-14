@@ -33,7 +33,6 @@ def manipulate_xml(products_in_xml, vat_rate):
                 elif type(j) is str:
                     k = i["images"]["img_item"]
                     images.append({"src": f"{j}"})
-            # burası çok iyi olmamış bence
             parent_category = i["cat2name"]
             child_category = i["cat3name"]
         except KeyError:
@@ -67,7 +66,6 @@ def manipulate_xml(products_in_xml, vat_rate):
     return products_in_xml
 
 
-# Try except gerekebilir3
 def woocommerce_list_products(wcapi, store_url, consumer_key, per_page, page_number_range):
     payload = json.dumps({
         "id": "test_id",
@@ -151,7 +149,6 @@ def woocommerce_create_products(wcapi, products_in_xml, selected_product):
             break
 
 
-# Her seferinde servise gitmek sistemi yorduğu için herhangi bir değişiklik varsa git de
 def woocommerce_update_products(wcapi, products_in_xml, selected_product):
     i = selected_product
     name = i["name"]
@@ -212,7 +209,6 @@ def woocommerce_create_variations(wcapi, products_in_Limante):
                     regular_price = j["regular_price"]
                 except:
                     pass
-                # Stock quantity ortak yapıda olduğu için her bir varyasyonun ayrı ayrı oluşturulması gerekebilir. Varyasyonların stok bilgileri
                 data = {
                     "regular_price": regular_price,
                     "sale_price": sale_price,
@@ -256,7 +252,7 @@ def program_flow(wcapi, products_in_xml, products_in_limante):
     # Do operations
     for product in sku_list_of_xml:
         selectedProduct = product[1]
-        if product[0] not in sku_list_of_limante:  # Buraya fiyat 1 den küçükse tarzı bir şey eklenebilir
+        if product[0] not in sku_list_of_limante:
             woocommerce_create_products(wcapi, products_in_xml, selectedProduct)
             created_products_count += 1
         else:
