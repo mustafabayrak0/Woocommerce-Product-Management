@@ -4,69 +4,6 @@ def parse_xml(xml_url, parse_xml_first_parameter, parse_xml_second_parameter):
     return data[parse_xml_first_parameter][parse_xml_second_parameter]
 
 
-def group_variations(products_in_xml):
-    index_list = []
-    codes_list = []
-    for i in range(len(products_in_xml)):
-        temp_list = []
-        if products_in_xml[i]["ws_code"] not in index_list:
-            index_list.append(products_in_xml[i]["code"])
-            temp_list.append(products_in_xml[i]["code"])
-            new_string_1 = string_formatter(products_in_xml[i]["ws_code"])
-            for j in range(i + 1, len(products_in_xml)):
-                new_string_2 = string_formatter(products_in_xml[j]["ws_code"])
-                if new_string_1 == new_string_2:
-                    temp_list.append(products_in_xml[j]["code"])
-                    index_list.append(products_in_xml[j]["code"])
-            codes_list.append(temp_list)
-    return codes_list
-
-
-def manipulate_xml(products_in_xml, variation_groups_list, vat_rate):
-    for i in products_in_xml:
-
-        # price manipulation
-        i["price_list"] = str(math.floor(float(i["price_list"]) * ((100 + vat_rate) / 100)) + 0.99)
-        i["price_special_vat_included"] = str(math.floor(float(i["price_special_vat_included"])) + 0.99)
-
-        # images list manipulation
-        images = []
-        try:
-            for j in i["images"]["img_item"]:
-                images.append({"src": f"{j}"})
-            parent_category = i["cat2name"]
-            child_category = i["cat3name"]
-        except KeyError:
-            pass
-        i["images"] = images
-
-        # stock status manipulation
-        if i["stock"] == "0":
-            i["unit"] = "outofstock"
-        else:
-            i["unit"] = "instock"
-
-        # category manipulation
-        i["category_path"] = [{"name": f"{parent_category}"}, {"name": f"{child_category}"}]
-
-        # type manipulation
-        for group_list in variation_groups_list:
-            if len(group_list) == 1:
-                for product_id in group_list:
-                    for product in products_in_xml:
-                        if product["code"] == f"{product_id}":
-                            product["model"] = "simple"
-            else:
-                for product_ids in group_list:
-                    for product in products_in_xml:
-                        if product["code"] == f"{product_id}":
-                            product["model"] = "variable"
-
-        # variation manipulation
-
-    return products_in_xml
-
-
 def woocommerce_api_connection(consumer_key, consumer_secret, store_url):
     wcapi = API(
         url=store_url,
@@ -78,6 +15,59 @@ def woocommerce_api_connection(consumer_key, consumer_secret, store_url):
     return wcapi
 
 
+def manipulate_xml(products_in_xml, vat_rate):
+    for i in products_in_xml:
+
+        # price manipulation
+        i["price_list"] = str(math.floor(float(i["price_list"]) * ((100 + vat_rate) / 100)) + 0.99)
+        i["price_special_vat_included"] = str(math.floor(float(i["price_special_vat_included"])) + 0.99)
+
+        # images and categories manipulation
+        images = []
+        try:
+            for j in i["images"]["img_item"]:
+                if type(j) is list:
+                    for image_list in j:
+                        for image in image_list:
+                            images.append({"src": f"{image}"})
+                elif type(j) is str:
+                    k = i["images"]["img_item"]
+                    images.append({"src": f"{j}"})
+            # burası çok iyi olmamış bence
+            parent_category = i["cat2name"]
+            child_category = i["cat3name"]
+        except KeyError:
+            pass
+        except Exception as ex:
+            print(ex)
+        i["images"] = images
+
+        # stock status manipulation
+        if i["stock"] == "0":
+            i["unit"] = "outofstock"
+        else:
+            i["unit"] = "instock"
+
+        # category manipulation
+        i["category_path"] = [{"name": f"{parent_category}"}, {"name": f"{child_category}"}]
+
+        # attributes manipulation
+        options = []
+        try:
+            for j in (i["subproducts"]["subproduct"]):
+                try:
+                    options.append(j["type2"])
+                except:
+                    pass
+
+        except:
+            pass
+        i["cat1name"] = options
+        # variation manipulation
+    return products_in_xml
+
+
+# Try except gerekebilir3
 def woocommerce_list_products(wcapi, store_url, consumer_key, per_page, page_number_range):
     payload = json.dumps({
         "id": "test_id",
@@ -112,8 +102,9 @@ def woocommerce_list_products(wcapi, store_url, consumer_key, per_page, page_num
     }
 
     products_in_limante = []
+
     for page_number in range(1, page_number_range):
-        url = f"{store_url}/wp-json/wc/v3/products?{per_page}=100&page={page_number}"
+        url = f"{store_url}/wp-json/wc/v3/products?per_page={per_page}&page={page_number}"
         response = requests.request("GET", url, headers=headers, data=payload)
         if len(response.json()) != 0:
             products_in_limante.append(response.json())
@@ -121,60 +112,115 @@ def woocommerce_list_products(wcapi, store_url, consumer_key, per_page, page_num
     return products_in_limante
 
 
-def woocommerce_create_products(wcapi, products_in_xml):
-    for i in products_in_xml:
-        name = i["name"]
-        product_id = i["code"]
-        sku = i["ws_code"]
-        description = i["detail"]
-        images = i["images"]
-        category = i["category_path"]
-        normal_price = i["price_list"]
-        sale_price = i["price_special_vat_included"]
-        tag = i["brand"]
-        stock_quantity = i["stock"]
-        stock_status = i["unit"]
-        data = {
-            "id": f"{product_id}",
-            "name": f"{name}",
-            "sku": f"{sku}",
-            "description": f"{description}",
-            "catalog_visibility": "visible",
-            "type": "variable",
-            "tax_status": "none",
-            "stock_quantity": stock_quantity,
-            "location": "0",
-            "published": "1",
-            "variation": "",
-            "images": images,
-            "categories": category,
-            "tags": tag,
-            "regular_price": normal_price,
-            "sale_price": sale_price,
-            "purchasable": True,
-            "stock_status": stock_status,
-            "attributes": [
-                {"name": "Size", "visible": True, "variation": True, "options": [
-                    "Black",
-                    "Green"
-                ]},
-            ],
-        }
-        wcapi.post("products", data).json()
-
-
-def woocommerce_update_products(wcapi, products_in_limante, products_in_xml):
+def woocommerce_create_products(wcapi, products_in_xml, selected_product):
+    i = selected_product
+    name = i["name"]
+    sku = i["ws_code"]
+    description = i["detail"]
+    images = i["images"]
+    category = i["category_path"]
+    normal_price = i["price_list"]
+    sale_price = i["price_special_vat_included"]
+    stock_quantity = int(i["stock"])
+    stock_status = i["unit"]
+    options = i["cat1name"]
     data = {
-        "regular_price": "24.54"
+        "name": f"{name}",
+        "sku": f"{sku}",
+        "description": f"{description}",
+        "type": "variable",
+        "tax_status": "none",
+        "images": images,
+        "categories": category,
+        "regular_price": normal_price,
+        "sale_price": sale_price,
+        "stock_quantity": stock_quantity,
+        "stock_status": stock_status,
+        "attributes": [
+            {"name": "Size", "visible": True, "variation": False, "options": options},
+        ],
     }
-    wcapi.put(f"products/{data}", data).json()
+    for attempt in range(3):
+        try:
+            wcapi.post("products", data).json()
+        except requests.exceptions.ReadTimeout:
+            time.sleep(5)
+        except Exception as ex:
+            print(ex)
+        else:
+            break
+
+
+# Her seferinde servise gitmek sistemi yorduğu için herhangi bir değişiklik varsa git de
+def woocommerce_update_products(wcapi, products_in_xml, selected_product):
+    i = selected_product
+    name = i["name"]
+    description = i["detail"]
+    images = i["images"]
+    category = i["category_path"]
+    normal_price = i["price_list"]
+    sale_price = i["price_special_vat_included"]
+    stock_quantity = int(i["stock"])
+    stock_status = i["unit"]
+    options = i["cat1name"]
+    data = {
+        "name": f"{name}",
+        "description": f"{description}",
+        "catalog_visibility": "visible",
+        "type": "simple",
+        "tax_status": "none",
+        "stock_quantity": stock_quantity,
+        "images": images,
+        "categories": category,
+        "regular_price": normal_price,
+        "sale_price": sale_price,
+        "purchasable": True,
+        "stock_status": stock_status,
+        "stock_quantity": stock_quantity,
+        "attributes": [
+            {"name": "Size", "visible": True, "variation": False, "options": options},
+        ],
+    }
+    for attempt in range(3):
+        try:
+            wcapi.put(f"products/{data}", data).json()
+        except requests.exceptions.ReadTimeout:
+
+            time.sleep(5)
+        else:
+            break
 
 
 def woocommerce_delete_products(wcapi, product_id):
-    try:
-        wcapi.delete(f"products/{product_id}", params={"force": True})
-    except requests.exceptions.ReadTimeout:
-        time.sleep(5)
+    for attempt in range(3):
+        try:
+            wcapi.delete(f"products/{product_id}", params={"force": True})
+        except requests.exceptions.ReadTimeout:
+            time.sleep(5+(5*attempt))
+        else:
+            break
+
+
+def woocommerce_create_variations(wcapi, products_in_Limante):
+    for i in products_in_Limante:
+        for j in i:
+            for option in attributes[0]["options"]:
+                try:
+                    variations = [{"name": "Size", "option": option}]
+                    attributes = j["attributes"]
+                    id = j["id"]
+                    regular_price = j["regular_price"]
+                except:
+                    pass
+                # Stock quantity ortak yapıda olduğu için her bir varyasyonun ayrı ayrı oluşturulması gerekebilir. Varyasyonların stok bilgileri
+                data = {
+                    "regular_price": regular_price,
+                    "sale_price": sale_price,
+                    "attributes": variations,
+                    "stock_quantity": "1",
+                    "stock_status": "1",
+                }
+                wcapi.post(f"products/{j}/variations", data).json()
 
 
 def string_formatter(string_to_format):
@@ -186,27 +232,42 @@ def string_formatter(string_to_format):
 
 
 def program_flow(wcapi, products_in_xml, products_in_limante):
-    id_list_of_xml = []
-    id_list_of_limante = []
+    sku_list_of_xml = []
+    sku_list_of_limante = []
+    sku_list_of_xml_for_delete = []
     created_products_count = 0
     updated_products_count = 0
     deleted_products_count = 0
+
+    # Create sku lists
     for i in products_in_limante:
-        id_list_of_limante.append(i["code"]),
+        if type(i) is list:
+            j = i[0]
+        else:
+            j = i
+        try:
+            sku_list_of_limante.append(j["sku"])
+        except Exception as ex:
+            print(ex)
     for j in products_in_xml:
-        id_list_of_xml.append(j["code"])
-    for i in id_list_of_limante:
-        if i["code"] not in id_list_of_xml:
+        sku_list_of_xml.append([j["ws_code"], j])
+        sku_list_of_xml_for_delete.append(j["ws_code"])
+
+    # Do operations
+    for product in sku_list_of_xml:
+        selectedProduct = product[1]
+        if product[0] not in sku_list_of_limante:  # Buraya fiyat 1 den küçükse tarzı bir şey eklenebilir
+            woocommerce_create_products(wcapi, products_in_xml, selectedProduct)
+            created_products_count += 1
+        else:
+            woocommerce_update_products(wcapi, products_in_limante, selectedProduct)
+            updated_products_count += 1
+
+    for product in sku_list_of_limante:
+        if product not in sku_list_of_xml_for_delete:
             woocommerce_delete_products(wcapi, i["code"])
             deleted_products_count += 1
 
-    for j in id_list_of_xml:
-        if j not in id_list_of_limante:
-            woocommerce_create_products(wcapi, products_in_xml)
-            created_products_count += 1
-        else:
-            woocommerce_update_products(wcapi, products_in_limante, products_in_xml)
-            updated_products_count += 1
     print(
         f"{len(id_list_of_xml)} products in xml\n{len(id_list_of_limante)}products in limante\n{created_products_count}"
         f"products created\n{updated_products_count}products updated\n{deleted_products_count}products deleted")
@@ -222,12 +283,12 @@ if __name__ == '__main__':
     import math
 
     # urls
-    xmlUrl = "YourXmlUrl"
-    storeUrl = "YourStoreUrl"
+    xmlUrl = "XmlUrl"
+    storeUrl = "https://limante.com.tr"
 
     # keys
-    consumerKey = "YourConsumerKey"
-    consumerSecret = "YourConsumerSecret"
+    consumerKey = "consumerKey"
+    consumerSecret = "consumerSecret"
 
     # parametric values
     parseXmlFirstParameter = "products"
@@ -238,8 +299,7 @@ if __name__ == '__main__':
 
     # program flow
     productsInXml = parse_xml(xmlUrl, parseXmlFirstParameter, parseXmlSecondParameter)
-    variationGroupsList = group_variations(productsInXml)
     wcapi = woocommerce_api_connection(consumerKey, consumerSecret, storeUrl)
     productsInLimante = woocommerce_list_products(wcapi, storeUrl, consumerKey, perPage, pageNumberRange)
-    productsInXml = manipulate_xml(productsInXml, variationGroupsList, vatRate)
-    # program_flow(wcapi, productsInXml, productsInLimante)
+    productsInXml = manipulate_xml(productsInXml, vatRate)
+    program_flow(wcapi, productsInXml, productsInLimante)
