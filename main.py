@@ -583,7 +583,6 @@ if __name__ == '__main__':
     start_time = time.time()
     productsInXml = parse_xml(xmlUrl, parseXmlFirstParameter, parseXmlSecondParameter)
     wcapi = woocommerce_api_connection(consumerKey, consumerSecret, storeUrl)
-    lst_start = time.time()
     productsInLimante = woocommerce_list_products(wcapi, storeUrl, consumerKey, perPage, pageNumberRange)
     productsInXml = manipulate_xml(productsInXml, vatRate)
     main(wcapi, productsInXml, productsInLimante)
